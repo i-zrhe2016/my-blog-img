@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>上传成功</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
+      .container { max-width: 920px; margin: 0 auto; }
+      .nav a { margin-right: .75rem; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+      .card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; }
+      code, pre { background: #f6f8fa; padding: .25rem .5rem; border-radius: 4px; }
+      img { max-width: 100%; height: auto; }
+      .meta { color: #666; font-size: .9rem; }
+      .field { margin-bottom: .75rem; }
+      input.copy { width: 100%; padding: .5rem; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="nav">
+        <a href="/">再传一张</a>
+        <a href="/gallery">查看图库</a>
+      </div>
+      <h2>上传成功</h2>
+      <div class="grid">
+        <div class="card">
+          <img src="{{ direct_url }}" alt="{{ record.filename }}" />
+          <div class="meta">原始文件名：{{ record.filename }} | 大小：{{ record.size }} B | ID：{{ record.id }}</div>
+          <form action="/delete/{{ record.id }}" method="post" onsubmit="return confirm('确认删除该图片？此操作不可恢复');" style="margin-top:.5rem;">
+            {% if delete_token %}
+            <input type="hidden" name="token" value="{{ delete_token }}">
+            {% endif %}
+            <button type="submit" style="padding:.35rem .6rem;border:1px solid #d33;border-radius:6px;background:#fff;color:#d33;cursor:pointer;">删除此图片</button>
+          </form>
+        </div>
+        <div class="card">
+          <div class="field">
+            <div>直链</div>
+            <input class="copy" readonly value="{{ direct_url }}">
+          </div>
+          <div class="field">
+            <div>Markdown</div>
+            <input class="copy" readonly value="{{ markdown }}">
+          </div>
+          <div class="field">
+            <div>HTML</div>
+            <input class="copy" readonly value='{{ html }}'>
+          </div>
+          <div class="field">
+            <div>API 记录</div>
+            <a href="/links/{{ record.id }}"><code>/links/{{ record.id }}</code></a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+  </html>
