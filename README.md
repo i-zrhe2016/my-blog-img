@@ -40,4 +40,42 @@ curl -F image=@your.png http://localhost:8000/api/upload
 - `PORT`：端口，默认 `8000`
 - `BASE_URL`：生成外链的基地址（不设则按请求推断）
 
+备份
+
+- 目标：加密打包后上传到 Cloudflare R2。
+- 依赖：`openssl`、`rar`、`awscli`（脚本会尝试用 `apt` 安装）。
+- 一次执行：
+
+```
+MASTER_PASS='你的主密码' data/backup_to_r2.sh
+```
+
+- 准备密钥（首次）：在 `data/` 生成加密凭证 `r2_secrets.enc`。
+
+```
+cat > data/r2.env <<'EOF'
+AWS_ACCESS_KEY_ID=你的key
+AWS_SECRET_ACCESS_KEY=你的secret
+R2_BUCKET=你的bucket
+R2_ENDPOINT=https://<account_id>.r2.cloudflarestorage.com
+EOF
+openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -md sha256 \
+  -salt -in data/r2.env -out data/r2_secrets.enc
+shred -u data/r2.env 2>/dev/null || rm -f data/r2.env
+```
+
+- 恢复：使用 `unrar` 解压（需主密码）。
+
+```
+unrar x -p你的主密码 all_*.rar
+```
+
+- 定时（可选）：
+
+```
+# 每天 02:30 备份
+30 2 * * * cd /path/to/repo && \
+  MASTER_PASS='你的主密码' data/backup_to_r2.sh >> backup.log 2>&1
+```
+
 就这些。
