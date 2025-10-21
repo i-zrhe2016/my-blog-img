@@ -33,7 +33,22 @@
         {% for it in items %}
         <div class="item">
           <a href="{{ it.url }}" target="_blank"><img class="thumb" src="{{ it.url }}" alt="{{ it.filename }}" loading="lazy"></a>
-          <div class="meta">{{ it.filename }} · {{ it.size }}B</div>
+          <div class="meta">
+            {{ it.filename }} · {{ it.size }}B
+            {% if it.original_size is defined and it.original_size != it.size %}
+              (原始 {{ it.original_size }}B)
+            {% endif %}
+            {% if it.optimized %}
+              · 已压缩
+            {% else %}
+              · 未压缩
+            {% endif %}
+            {% if it.converted is defined and it.converted %}
+              · 已转 PNG (原格式 {{ it.original_ext|default('未知')|upper }})
+            {% else %}
+              · 未转换
+            {% endif %}
+          </div>
           <div class="link"><a href="/links/{{ it.id }}">/links/{{ it.id }}</a></div>
           <form action="/delete/{{ it.id }}" method="post" onsubmit="return confirm('确认删除该图片？此操作不可恢复');" style="margin-top:.5rem;">
             {% if delete_token %}

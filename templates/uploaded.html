@@ -27,7 +27,20 @@
       <div class="grid">
         <div class="card">
           <img src="{{ direct_url }}" alt="{{ record.filename }}" />
-          <div class="meta">原始文件名：{{ record.filename }} | 大小：{{ record.size }} B | ID：{{ record.id }}</div>
+          <div class="meta">
+            原始文件名：{{ record.filename }} |
+            保存格式：{{ record.ext|upper }}
+            {% if record.converted|default(False) %}
+              (来自 {{ record.original_ext|default('unknown')|upper }})
+            {% endif %} |
+            大小：{{ record.size }} B
+            {% if record.original_size is defined and record.original_size != record.size %}
+              (原始 {{ record.original_size }} B)
+            {% endif %} |
+            压缩：{{ '是' if record.optimized else '否' }} |
+            转换：{{ '是' if record.converted|default(False) else '否' }} |
+            ID：{{ record.id }}
+          </div>
           <form action="/delete/{{ record.id }}" method="post" onsubmit="return confirm('确认删除该图片？此操作不可恢复');" style="margin-top:.5rem;">
             {% if delete_token %}
             <input type="hidden" name="token" value="{{ delete_token }}">

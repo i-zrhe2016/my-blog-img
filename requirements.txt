@@ -1,2 +1,4 @@
 Flask==3.0.3
 Werkzeug==3.0.3
+tinify==1.7.1
+Pillow>=9.0.0

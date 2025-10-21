@@ -1,3 +1,4 @@
+import io
 import os
 import json
 import hashlib
@@ -5,6 +6,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+
+import tinify
+from PIL import Image
 
 from flask import Flask, request, redirect, url_for, render_template, flash, jsonify, send_from_directory, abort
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -16,6 +20,9 @@ BASE_DIR = Path(__file__).parent.resolve()
 UPLOAD_DIR = BASE_DIR / "uploads"
 DATA_DIR = BASE_DIR / "data"
 META_FILE = DATA_DIR / "images.jsonl"
+
+DEFAULT_TINYPNG_KEY = "ccspxh13F7PZpMSq1WPmsvf4Y8BF9rcn"
+SUPPORTED_TINYPNG_EXTS = {"png", "jpg", "jpeg"}
 
 # 10 MB default
 MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", 10 * 1024 * 1024))
@@ -38,6 +45,16 @@ def create_app() -> Flask:
     if not META_FILE.exists():
         META_FILE.touch()
 
+    env_key = os.getenv("TINYPNG_KEY")
+    if env_key is not None:
+        tinify_key = env_key.strip()
+    else:
+        tinify_key = DEFAULT_TINYPNG_KEY
+    if tinify_key:
+        tinify.key = tinify_key
+    else:
+        tinify_key = None
+
     @app.route("/")
     def index():
         base = (os.getenv("BASE_URL") or DEFAULT_BASE_URL or request.url_root).rstrip("/")
@@ -50,6 +67,42 @@ def create_app() -> Flask:
         h = hashlib.sha256()
         h.update(blob)
         return h.hexdigest()
+
+    def optimize_with_tinify(blob: bytes, ext: str) -> tuple[bytes, bool]:
+        if not tinify_key or ext.lower() not in SUPPORTED_TINYPNG_EXTS:
+            return blob, False
+        try:
+            source = tinify.from_buffer(blob)
+            optimized_blob = source.to_buffer()
+        except tinify.Error as exc:  # type: ignore[attr-defined]
+            app.logger.warning("TinyPNG optimization failed for %s: %s", ext, exc)
+            return blob, False
+        return optimized_blob, True
+
+    def convert_to_png(blob: bytes, ext: str) -> tuple[bytes, bool]:
+        if ext.lower() == "png":
+            return blob, False
+        try:
+            with Image.open(io.BytesIO(blob)) as image:
+                if getattr(image, "is_animated", False):
+                    try:
+                        image.seek(0)
+                    except EOFError:
+                        pass
+                if image.mode not in {"RGB", "RGBA"}:
+                    # Preserve alpha channel where available
+                    if "A" in image.mode:
+                        image = image.convert("RGBA")
+                    else:
+                        image = image.convert("RGB")
+                else:
+                    image = image.copy()
+                buffer = io.BytesIO()
+                image.save(buffer, format="PNG")
+                return buffer.getvalue(), True
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("PNG conversion failed for %s: %s", ext, exc)
+        return blob, False
 
     def generate_id() -> str:
         return hashlib.sha1(f"{time.time_ns()}-{os.getpid()}".encode()).hexdigest()[:12]
@@ -117,22 +170,32 @@ def create_app() -> Flask:
 
         original_name = secure_filename(file.filename)
         ext = original_name.rsplit(".", 1)[1].lower()
+        original_ext = ext
 
         blob = file.read()
-        size = len(blob)
-        if size == 0:
+        original_size = len(blob)
+        if original_size == 0:
             flash("空文件")
             return redirect(url_for("index"))
-        if size > MAX_CONTENT_LENGTH:
+        if original_size > MAX_CONTENT_LENGTH:
             flash("文件过大")
             return redirect(url_for("index"))
 
-        digest = sha256_bytes(blob)
+        converted_blob, converted = convert_to_png(blob, ext)
+        if converted:
+            blob = converted_blob
+            ext = "png"
+
+        optimized_blob, optimized = optimize_with_tinify(blob, ext)
+        final_blob = optimized_blob
+        final_size = len(final_blob)
+        final_digest = sha256_bytes(final_blob)
+
         image_id = generate_id()
         save_name = f"{image_id}.{ext}"
         save_path = UPLOAD_DIR / save_name
         with open(save_path, "wb") as out:
-            out.write(blob)
+            out.write(final_blob)
 
         url = build_public_url(image_id, ext)
         record = {
@@ -141,10 +204,14 @@ def create_app() -> Flask:
             "filename": original_name,
             "stored_name": save_name,
             "path": str(save_path.relative_to(BASE_DIR)),
-            "size": size,
-            "sha256": digest,
+            "size": final_size,
+            "sha256": final_digest,
+            "original_size": original_size,
+            "original_ext": original_ext,
             "uploaded_at": datetime.utcnow().isoformat() + "Z",
             "url": url,
+            "optimized": optimized,
+            "converted": converted,
         }
         append_meta(record)
 
@@ -170,19 +237,28 @@ def create_app() -> Flask:
 
         original_name = secure_filename(file.filename)
         ext = original_name.rsplit(".", 1)[1].lower()
+        original_ext = ext
         blob = file.read()
-        size = len(blob)
-        if size == 0:
+        original_size = len(blob)
+        if original_size == 0:
             return jsonify({"error": "empty file"}), 400
-        if size > MAX_CONTENT_LENGTH:
+        if original_size > MAX_CONTENT_LENGTH:
             return jsonify({"error": "file too large"}), 413
 
-        digest = sha256_bytes(blob)
+        converted_blob, converted = convert_to_png(blob, ext)
+        if converted:
+            blob = converted_blob
+            ext = "png"
+
+        optimized_blob, optimized = optimize_with_tinify(blob, ext)
+        final_blob = optimized_blob
+        final_size = len(final_blob)
+        final_digest = sha256_bytes(final_blob)
         image_id = generate_id()
         save_name = f"{image_id}.{ext}"
         save_path = UPLOAD_DIR / save_name
         with open(save_path, "wb") as out:
-            out.write(blob)
+            out.write(final_blob)
 
         url = build_public_url(image_id, ext)
         record = {
@@ -191,10 +267,14 @@ def create_app() -> Flask:
             "filename": original_name,
             "stored_name": save_name,
             "path": str(save_path.relative_to(BASE_DIR)),
-            "size": size,
-            "sha256": digest,
+            "size": final_size,
+            "sha256": final_digest,
+            "original_size": original_size,
+            "original_ext": original_ext,
             "uploaded_at": datetime.utcnow().isoformat() + "Z",
             "url": url,
+            "optimized": optimized,
+            "converted": converted,
         }
         append_meta(record)
 
@@ -203,8 +283,13 @@ def create_app() -> Flask:
             "url": url,
             "markdown": f"![{original_name}]({url})",
             "html": f"<img src=\"{url}\" alt=\"{original_name}\">",
-            "size": size,
-            "sha256": digest,
+            "size": final_size,
+            "sha256": final_digest,
+            "original_size": original_size,
+            "optimized": optimized,
+            "converted": converted,
+            "extension": ext,
+            "original_ext": original_ext,
         })
 
     @app.get("/img/<path:filename>")
