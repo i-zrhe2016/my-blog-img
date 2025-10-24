@@ -13,6 +13,8 @@
       .thumb { width: 100%; height: 180px; object-fit: cover; border-radius: 6px; }
       .meta { font-size: .85rem; color: #666; margin-top: .25rem; }
       .link { font-size: .85rem; word-break: break-all; }
+      .section { margin-top: 2rem; }
+      .section h3 { margin-bottom: .75rem; border-left: 4px solid #0074d9; padding-left: .5rem; font-size: 1.2rem; }
     </style>
   </head>
   <body>
@@ -29,38 +31,45 @@
       {% endif %}
       {% endwith %}
       <h2>图库</h2>
-      <div class="grid">
-        {% for it in items %}
-        <div class="item">
-          <a href="{{ it.url }}" target="_blank"><img class="thumb" src="{{ it.url }}" alt="{{ it.filename }}" loading="lazy"></a>
-          <div class="meta">
-            {{ it.filename }} · {{ it.size }}B
-            {% if it.original_size is defined and it.original_size != it.size %}
-              (原始 {{ it.original_size }}B)
-            {% endif %}
-            {% if it.optimized %}
-              · 已压缩
-            {% else %}
-              · 未压缩
-            {% endif %}
-            {% if it.converted is defined and it.converted %}
-              · 已转 PNG (原格式 {{ it.original_ext|default('未知')|upper }})
-            {% else %}
-              · 未转换
-            {% endif %}
+      {% if groups %}
+        {% for section in groups %}
+        <div class="section">
+          <h3>{{ section.label }}</h3>
+          <div class="grid">
+            {% for it in section.entries %}
+            <div class="item">
+              <a href="{{ it.url }}" target="_blank"><img class="thumb" src="{{ it.url }}" alt="{{ it.filename }}" loading="lazy"></a>
+              <div class="meta">
+                {{ it.filename }} · {{ it.size }}B
+                {% if it.original_size is defined and it.original_size != it.size %}
+                  (原始 {{ it.original_size }}B)
+                {% endif %}
+                {% if it.optimized %}
+                  · 已压缩
+                {% else %}
+                  · 未压缩
+                {% endif %}
+                {% if it.converted is defined and it.converted %}
+                  · 已转 PNG (原格式 {{ it.original_ext|default('未知')|upper }})
+                {% else %}
+                  · 未转换
+                {% endif %}
+              </div>
+              <div class="link"><a href="/links/{{ it.id }}">/links/{{ it.id }}</a></div>
+              <form action="/delete/{{ it.id }}" method="post" onsubmit="return confirm('确认删除该图片？此操作不可恢复');" style="margin-top:.5rem;">
+                {% if delete_token %}
+                <input type="hidden" name="token" value="{{ delete_token }}">
+                {% endif %}
+                <button type="submit" style="padding:.35rem .6rem;border:1px solid #d33;border-radius:6px;background:#fff;color:#d33;cursor:pointer;">删除</button>
+              </form>
+            </div>
+            {% endfor %}
           </div>
-          <div class="link"><a href="/links/{{ it.id }}">/links/{{ it.id }}</a></div>
-          <form action="/delete/{{ it.id }}" method="post" onsubmit="return confirm('确认删除该图片？此操作不可恢复');" style="margin-top:.5rem;">
-            {% if delete_token %}
-            <input type="hidden" name="token" value="{{ delete_token }}">
-            {% endif %}
-            <button type="submit" style="padding:.35rem .6rem;border:1px solid #d33;border-radius:6px;background:#fff;color:#d33;cursor:pointer;">删除</button>
-          </form>
         </div>
-        {% else %}
-        <p>暂无图片，先去 <a href="/">上传</a> 吧。</p>
         {% endfor %}
-      </div>
+      {% else %}
+      <p>暂无图片，先去 <a href="/">上传</a> 吧。</p>
+      {% endif %}
     </div>
   </body>
   </html>

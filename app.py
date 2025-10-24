@@ -321,7 +321,29 @@ def create_app() -> Flask:
     @app.get("/gallery")
     def gallery():
         items = load_all()[::-1]
-        return render_template("gallery.html", items=items, delete_token=admin_token())
+
+        def month_label(uploaded_at: Optional[str]) -> str:
+            if not uploaded_at:
+                return "未分类"
+            normalized = uploaded_at.replace("Z", "+00:00")
+            try:
+                dt = datetime.fromisoformat(normalized)
+            except ValueError:
+                return "未分类"
+            return dt.strftime("%Y年%m月")
+
+        grouped: List[Dict[str, Any]] = []
+        buckets: Dict[str, List[Dict[str, Any]]] = {}
+        for item in items:
+            label = month_label(item.get("uploaded_at"))
+            bucket = buckets.get(label)
+            if bucket is None:
+                bucket = []
+                buckets[label] = bucket
+                grouped.append({"label": label, "entries": bucket})
+            bucket.append(item)
+
+        return render_template("gallery.html", groups=grouped, delete_token=admin_token())
 
     @app.post("/delete/<image_id>")
     def delete_image(image_id: str):
